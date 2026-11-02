@@ -461,7 +461,12 @@ fn check(arguments: CheckArguments, components: crate::FrozenComponentRegistry) 
     let asset_root = crate::resolve_app_root(&arguments.directory, ENTRY)
         .unwrap_or_else(|_| arguments.directory.clone());
 
-    gpui_platform::application()
+    let application = gpui_platform::application();
+    // Set the accessory policy before AppKit runs, retaining the native window
+    // needed for validation without adding a Dock icon or menu bar.
+    #[cfg(target_os = "macos")]
+    let application = application.with_windowing(gpui::WindowingRequest::Headless);
+    application
         .with_assets(AppAssets::new(asset_root))
         .run(move |cx| {
             let mut outcome = CheckOutcome::default();
