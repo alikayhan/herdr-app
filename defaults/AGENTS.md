@@ -979,6 +979,9 @@ including a small herdr-core skill you can install with the user's permission.
 - Other machines: `hc machine ls`; `hc run --on <machine> ...` starts a
   terminal there (`vps/t7`), `hc exec --on <machine> git status` runs one
   command there and prints exactly its output.
+- Settings → Machines offers **Log in again** when a machine needs login.
+  It opens `hc machine login <name>` in a local terminal dialog for the
+  person's SSH password or code; the machine status refreshes automatically.
 
 ## Keep in mind
 

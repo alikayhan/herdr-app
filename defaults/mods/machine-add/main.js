@@ -52,6 +52,7 @@ async function parseConfig(text, hosts = [], depth = 0) {
 
 export default class MachineAdd extends View {
   init(_props, cx) {
+    if (props()?.part === "bar") return;
     this.hosts = null;
     this.added = [];
     this.state = {}; // target -> "adding" | "terminal" | error text
@@ -62,10 +63,8 @@ export default class MachineAdd extends View {
     this.inputFocused = true;
     this.input.on("focus", (_e, cx) => { this.inputFocused = true; cx.notify(); });
     this.input.on("blur", (_e, cx) => { this.inputFocused = false; cx.notify(); });
-    if (props()?.part !== "bar") {
-      this.input.focus();
-      cx.timer.after(600, () => this.input.focus());
-    }
+    this.input.focus();
+    cx.timer.after(600, () => this.input.focus());
     this.macs = {}; // target -> { name, core } for an added Mac
     this.opened = {};
     this.handle = cx.focus_handle();
@@ -237,7 +236,7 @@ export default class MachineAdd extends View {
       .text_size(12.5)
       .text_color(t.muted)
       .child(svg(I("server")).size(14))
-      .child(div().flex_1().child(`Adding ${props().target}: answer it here`))
+      .child(div().flex_1().child(`${props().action === "login" ? "Logging in to" : "Adding"} ${props().target}: answer it here`))
       .child(
         div()
           .id("ma-bar-close")

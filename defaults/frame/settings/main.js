@@ -2,7 +2,7 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, InputState, Input } from "gpui-base";
-import { hc, run, theme, themes, fonts, updates, telemetry, settings, layouts, shared, appHome, readTextFile, writeTextFile, playSound, props, closeOverlay, window } from "herdr";
+import { hc, run, theme, themes, fonts, updates, telemetry, settings, layouts, shared, appHome, readTextFile, writeTextFile, playSound, props, closeOverlay, openOverlay, window } from "herdr";
 
 const I = (name) => `frame/settings/${name}.svg`;
 
@@ -587,6 +587,40 @@ export default class Settings extends View {
     });
   }
 
+  machineLogin(machine, cx) {
+    if (this.machineBusy[machine]) return;
+    this.machineBusy[machine] = "login";
+    delete this.machineResults[machine];
+    cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        // Login needs a local terminal so SSH can ask the person for a password or code.
+        const r = await hc(["run", "--bg", "--json", "--no-parent", "--", "hc", "machine", "login", machine]);
+        let payload;
+        try { payload = JSON.parse(r.stdout); } catch {}
+        if (r.code !== 0 || !payload?.address) throw new Error(payload?.error?.message || r.stderr || "Couldn't open a login terminal.");
+        openOverlay({
+          kind: "dialog",
+          key: `machine-login-${machine}`,
+          width: 640,
+          height: 300,
+          layout: {
+            type: "column",
+            children: [
+              { type: "block", size: { px: 30 }, content: { mod: "machine-add", props: { part: "bar", target: machine, action: "login" } } },
+              { type: "block", content: { terminal: payload.address } },
+            ],
+          },
+        });
+      } catch (e) {
+        this.machineResults[machine] = { message: String(e.message ?? e), ok: false };
+      } finally {
+        delete this.machineBusy[machine];
+      }
+      cx.notify();
+    });
+  }
+
   olderCore(remote, local) {
     const parse = (v) => /^(\d+)\.(\d+)\.(\d+)(?:-([^+]+))?(?:\+.*)?$/.exec(v ?? "");
     const a = parse(remote), b = parse(local);
@@ -612,8 +646,12 @@ export default class Settings extends View {
     const color = ["connected", "online"].includes(m.state) ? t.ansi2 : ["connecting", "reconnecting"].includes(m.state) ? t.working : t.blocked;
     const result = this.machineResults[m.name];
     const controls = h_flex().gap(6).items_center();
-    if (busy) controls.child(svg("mods/workspace-chrome/spinner.svg").size(12).text_color(t.working).spin(900)).child(div().text_size(12).text_color(t.muted).child(busy === "update" ? "Updating…" : busy === "rename" ? "Renaming…" : "Removing…"));
-    else {
+    if (busy) {
+      const label = { login: "Opening login…", update: "Updating…", rename: "Renaming…" }[busy] ?? "Removing…";
+      controls.child(svg("mods/workspace-chrome/spinner.svg").size(12).text_color(t.working).spin(900))
+        .child(div().text_size(12).text_color(t.muted).child(label));
+    } else {
+      if (m.state === "needs_login") controls.child(this.button(t, `st-m-login-${m.name}`, "Log in again", (_e, cx) => this.machineLogin(m.name, cx)));
       if (this.olderCore(m.version, localVersion)) controls.child(this.button(t, `st-m-update-${m.name}`, "Update", (_e, cx) => this.machineAction(m.name, "update", cx)));
       for (const [action, label] of [["rename", "Rename"], ["rm", "Remove"]]) {
         controls.child(this.button(t, `st-m-${action}-${m.name}`, label, (_e, cx) => {

@@ -23,6 +23,10 @@ its terminals.
 `app.check_updates` checks for newer releases. Settings reports "Up to date"
 only after a successful check; on failure, check the connection and retry.
 
+Settings → Machines offers **Log in again** for machines that need login.
+It opens a local terminal dialog for `hc machine login <name>` so the person
+can enter their SSH password or code; the machine status refreshes automatically.
+
 ## Show something when asked
 
 New spaces and tabs are shown immediately: only create them when asked.

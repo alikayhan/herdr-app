@@ -158,6 +158,7 @@ fn module(values: BTreeMap<String, Value>, calls: Rc<RefCell<Calls>>) -> HostMod
         let calls = calls.clone();
         module = module.async_function(name, move |a| {
             let first = a.get(0).map(from_host).unwrap_or(Value::Null);
+            if name == "hc" { calls.borrow_mut().effects.push((name.into(), vec![first.clone()])); }
             let reply = match name {
                 "readTextFile" if first == "/fixture/app/settings.json" || first == "/fixture/.ssh/config" => Some(Value::Null),
                 "readTextFile" => first
@@ -448,6 +449,51 @@ fn machine_setup_prompt_stacks_above_the_picker(cx: &mut TestAppContext) {
     assert_eq!(spec["kind"], "dialog");
     assert_eq!(spec["layout"]["children"][1]["content"]["terminal"], "t-setup");
     assert!(!calls.effects.iter().any(|(name, _)| name == "closeOverlay"), "the picker must keep monitoring setup");
+}
+
+#[gpui::test]
+fn settings_machine_busy_states_replace_actions(cx: &mut TestAppContext) {
+    cx.update(gpui_shell::init);
+    let staged = Staged::new();
+    for (busy, label) in [
+        ("login", "Opening login…"),
+        ("update", "Updating…"),
+        ("rename", "Renaming…"),
+        ("rm", "Removing…"),
+    ] {
+        let mut p = props();
+        p["section"] = json!("machines");
+        let setup = format!(
+            "this.machineList = [{{name:'remote',state:'needs_login',version:'0.1.0'}}]; this.machineBusy.remote = {};",
+            json!(busy)
+        );
+        let tree = describe(cx, &staged, "frame/settings", true, p, updates("current", "current"), Some(&setup)).unwrap();
+        assert!(tree.contains(label), "{busy}: {tree}");
+        assert!(tree.lines().any(|line| line.contains("spinner.svg") && line.contains(":spin")), "{busy}: {tree}");
+        for action in ["login", "update", "rename", "rm"] {
+            assert!(!tree.contains(&format!("st-m-{action}-remote")), "{busy} must hide {action}: {tree}");
+        }
+    }
+}
+
+#[gpui::test]
+fn settings_machine_login_uses_a_local_terminal(cx: &mut TestAppContext) {
+    cx.update(gpui_shell::init);
+    let staged = Staged::new();
+    for state in ["needs_login", "connected", "unreachable"] {
+        let mut p = props();
+        p["section"] = json!("machines");
+        let setup = format!("this.machineList = [{{name:'remote',state:'{state}'}}];");
+        let tree = describe(cx, &staged, "frame/settings", true, p, updates("current", "current"), Some(&setup)).unwrap();
+        assert_eq!(tree.contains("Log in again"), state == "needs_login", "{tree}");
+        assert_eq!(tree.contains("st-m-login-remote"), state == "needs_login", "{tree}");
+    }
+    let calls = run_setup(cx, &staged, "frame/settings", "this.machineLogin('remote', cx);");
+    assert!(calls.effects.iter().any(|(name, args)| name == "hc" && args[0] == json!(["run", "--bg", "--json", "--no-parent", "--", "hc", "machine", "login", "remote"])));
+    let spec = &calls.effects.iter().find(|(name, _)| name == "openOverlay").unwrap().1[0];
+    assert_eq!(spec["kind"], "dialog");
+    assert_eq!(spec["layout"]["children"][1]["content"]["terminal"], "t-setup");
+    assert_eq!(spec["layout"]["children"][0]["content"]["props"]["action"], "login");
 }
 
 #[gpui::test]
