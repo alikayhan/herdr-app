@@ -256,6 +256,24 @@ fn props() -> Value {
     json!({"overlay":"o1","pane":"p1","terminal":"t1","space":"s1","tab":"pane","target":{"pane":"p1","terminal":"t1","id":"s1","space":"s1"},"title":"Fixture","value":"Name","message":"A prefilled message","command":{"name":"space.rename","args":{"id":"s1"}},"notification":{"title":"Finished","body":"Build done","action":{"name":"app.help"}},"action":"new"})
 }
 
+fn run_setup(cx: &mut TestAppContext, staged: &Staged, entry: &str, setup: &str) -> Calls {
+    let calls = Rc::new(RefCell::new(Calls::default()));
+    let policy = Policy::new().with_host_module(module(fixture(false, props(), updates("current", "current")), calls.clone())).unwrap();
+    let root = staged.wrapper(entry, setup);
+    let window = cx.add_window(|_, _| Empty);
+    let mut session = window.update(cx, |_, window, cx| {
+        DescriptionSession::load(ShellRuntime::new_isolated().unwrap(), root, policy, window, cx).unwrap()
+    }).unwrap();
+    cx.run_until_parked();
+    window.update(cx, |_, window, cx| {
+        session.describe(window, cx).unwrap();
+        window.remove_window();
+    }).unwrap();
+    let calls = calls.take();
+    assert!(calls.unexpected.is_empty(), "{:?}", calls.unexpected);
+    calls
+}
+
 #[gpui::test]
 fn shipped_initial_descriptions(cx: &mut TestAppContext) {
     cx.update(gpui_shell::init);
@@ -425,20 +443,7 @@ fn machine_picker_keeps_long_lists_scrollable(cx: &mut TestAppContext) {
 fn machine_setup_prompt_stacks_above_the_picker(cx: &mut TestAppContext) {
     cx.update(gpui_shell::init);
     let staged = Staged::new();
-    let calls = Rc::new(RefCell::new(Calls::default()));
-    let policy = Policy::new().with_host_module(module(fixture(false, props(), updates("current", "current")), calls.clone())).unwrap();
-    let root = staged.wrapper("mods/machine-add", "cx.spawn(async () => { await this.inTerminal('host'); });");
-    let window = cx.add_window(|_, _| Empty);
-    let mut session = window.update(cx, |_, window, cx| {
-        DescriptionSession::load(ShellRuntime::new_isolated().unwrap(), root, policy, window, cx).unwrap()
-    }).unwrap();
-    cx.run_until_parked();
-    window.update(cx, |_, window, cx| {
-        session.describe(window, cx).unwrap();
-        window.remove_window();
-    }).unwrap();
-    let calls = calls.borrow();
-    assert!(calls.unexpected.is_empty(), "{:?}", calls.unexpected);
+    let calls = run_setup(cx, &staged, "mods/machine-add", "cx.spawn(async () => { await this.inTerminal('host'); });");
     let spec = &calls.effects.iter().find(|(name, _)| name == "openOverlay").unwrap().1[0];
     assert_eq!(spec["kind"], "dialog");
     assert_eq!(spec["layout"]["children"][1]["content"]["terminal"], "t-setup");
