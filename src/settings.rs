@@ -391,6 +391,8 @@ pub struct Person {
     pub ui_font: Option<String>,
     /// macOS GPUI stroke thickening; false brings UI text closer to Ghostty.
     pub ui_font_thicken: bool,
+    /// macOS: how color values are shown; Display P3 matches iTerm2.
+    pub window_colorspace: WindowColorspace,
     /// Anonymous usage data (telemetry.rs). On unless set to false.
     #[serde(skip_serializing_if = "is_true")]
     pub telemetry: bool,
@@ -423,6 +425,14 @@ pub enum TerminalRenderer {
     #[default]
     Gpui,
     Ghostty,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WindowColorspace {
+    #[default]
+    Srgb,
+    DisplayP3,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -475,6 +485,7 @@ impl Default for Person {
             terminal_renderer: TerminalRenderer::Gpui,
             ui_font: None,
             ui_font_thicken: true,
+            window_colorspace: WindowColorspace::Srgb,
             telemetry: true,
             clipboard_write: true,
             copy_on_select: true,
@@ -508,6 +519,7 @@ pub struct Settings {
     pub ui_font_family: String,
     pub ui_font_size: f32,
     pub ui_font_thicken: bool,
+    pub window_colorspace: WindowColorspace,
     /// How big the whole app is drawn (1 = as designed). The zoom keys change it.
     pub zoom: f32,
     /// The theme showing: a preset or a file in themes/.
@@ -564,6 +576,7 @@ impl Default for Settings {
             ui_font_family: "Geist".into(),
             ui_font_size: 13.0,
             ui_font_thicken: true,
+            window_colorspace: WindowColorspace::Srgb,
             zoom: 1.0,
             theme: DEFAULT_DARK.into(),
             theme_light: DEFAULT_LIGHT.into(),
@@ -608,6 +621,7 @@ impl Settings {
             ui_font_family: look.ui_font.clone().or(person.ui_font.clone()).unwrap_or(d.ui_font_family),
             ui_font_size: d.ui_font_size,
             ui_font_thicken: person.ui_font_thicken,
+            window_colorspace: person.window_colorspace,
             zoom: person.zoom,
             theme: if dark { theme_dark.clone() } else { theme_light.clone() },
             theme_light,
@@ -741,6 +755,8 @@ pub fn write_person(person: &Person) -> std::io::Result<()> {
 pub fn set(s: Settings) -> bool {
     #[cfg(target_os = "macos")]
     gpui_macos::set_font_thickening(s.ui_font_thicken);
+    #[cfg(target_os = "macos")]
+    gpui_macos::set_display_p3(s.window_colorspace == WindowColorspace::DisplayP3);
     #[cfg(target_os = "macos")]
     gpui_macos::set_option_as_alt(match s.option_as_alt {
         OptionAsAlt::Auto => None,
@@ -1025,6 +1041,18 @@ mod tests {
         assert_eq!(composed.ui_font_family, "Monaco");
         let saved = serde_json::to_string(&lighter).unwrap();
         assert_eq!(serde_json::from_str::<Person>(&saved).unwrap(), lighter);
+    }
+
+    #[test]
+    fn window_colorspace_defaults_to_srgb_and_round_trips() {
+        let existing: Person = serde_json::from_str(r#"{"font":"Monaco"}"#).unwrap();
+        assert_eq!(existing.window_colorspace, WindowColorspace::Srgb);
+        let p3: Person = serde_json::from_str(r#"{"window_colorspace":"display-p3"}"#).unwrap();
+        let composed = Settings::compose(&p3, &crate::layout::Look::default(), true);
+        assert_eq!(composed.window_colorspace, WindowColorspace::DisplayP3);
+        let saved = serde_json::to_string(&p3).unwrap();
+        assert!(saved.contains(r#""window_colorspace":"display-p3""#), "{saved}");
+        assert_eq!(serde_json::from_str::<Person>(&saved).unwrap(), p3);
     }
 
     /// The guide agents read (written to the home folder) explains every

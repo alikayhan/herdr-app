@@ -784,6 +784,12 @@ What's about the user, never a look:
   immediately to panels, menus, mod text (including Markdown), and terminals
   using the Default renderer. Antialiasing, font sizes, weights and layout stay
   intact. Ghostty terminal rendering and other platforms are unchanged.
+- `window_colorspace`: macOS only, `"srgb"` (default) or `"display-p3"`. With
+  `"display-p3"`, every color value (interface, themes, ANSI palette and 24-bit
+  program output) is shown as Display P3, as iTerm2 does, so colors look more
+  saturated on wide-gamut displays; grays are unchanged. Select **sRGB** or
+  **Display P3** in Settings → Look → Colors. Applies immediately to both
+  terminal renderers. Other platforms are unchanged.
 - `minimum_contrast`: terminal text contrast ratio, `1` (default) leaves
   program colors unchanged. Set it to `1.6` to enable the previous readability
   adjustment, or another number from `1` to `21`. Text below that ratio is

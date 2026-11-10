@@ -670,6 +670,29 @@ fn interface_text_picker_is_macos_only_and_shows_current_choice(cx: &mut TestApp
 }
 
 #[gpui::test]
+fn colorspace_picker_is_macos_only_and_shows_current_choice(cx: &mut TestAppContext) {
+    cx.update(gpui_shell::init);
+    let staged = Staged::new();
+    for platform in ["macos", "linux", "windows"] {
+        for current in ["srgb", "display-p3"] {
+            let mut p = props();
+            p["section"] = json!("look");
+            let mut values = fixture(true, p, updates("current", "current"));
+            values.insert("window".into(), json!({"platform":platform}));
+            values.get_mut("settings").unwrap()["window_colorspace"] = json!(current);
+            let tree = describe_with_values(cx, &staged, "frame/settings", values, None).unwrap();
+            for choice in ["srgb", "display-p3"] {
+                let row = tree.lines().find(|line| line.contains(&format!("st-colorspace-{choice}")));
+                assert_eq!(row.is_some(), platform == "macos", "{platform}: {tree}");
+                if let Some(row) = row {
+                    assert_eq!(row.contains(".border_1"), choice == current, "{row}");
+                }
+            }
+        }
+    }
+}
+
+#[gpui::test]
 fn long_theme_names_stay_inside_their_card(cx: &mut TestAppContext) {
     cx.update(gpui_shell::init);
     let staged = Staged::new();

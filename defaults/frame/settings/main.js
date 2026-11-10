@@ -378,6 +378,15 @@ export default class Settings extends View {
     );
   }
 
+  colorspacePicker(t, s) {
+    const choices = [["srgb", "sRGB"], ["display-p3", "Display P3"]].map(([value, label]) => ({
+      id: `st-colorspace-${value}`, value, label,
+    }));
+    return this.choicePicker(t, s.window_colorspace ?? "srgb", choices, (value, cx) =>
+      this.change((p) => { p.window_colorspace = value; }, cx),
+    );
+  }
+
   themePicker(t, light) {
     const s = settings();
     const current = light ? s.theme_light : s.theme_dark;
@@ -545,6 +554,7 @@ export default class Settings extends View {
       .child(this.layoutPicker(t, cx))
       .child(this.row(t, "Terminal renderer", s.ghostty_renderer_available ? "Applies immediately. Ghostty is experimental." : "Ghostty is unavailable in this build.", this.rendererPicker(t, s)))
       .when(window()?.platform === "macos", (el) => el.child(this.row(t, "Interface text", "Lighter strokes in panels, menus and mods. Applies immediately.", this.interfaceTextPicker(t, s))))
+      .when(window()?.platform === "macos", (el) => el.child(this.row(t, "Colors", "Display P3 shows colors as iTerm2 does: more saturated on wide-gamut screens. Applies immediately.", this.colorspacePicker(t, s))))
       .child(div().h(18))
       .child(this.heading(t, "Theme"))
       .child(this.row(t, "Appearance", "Light or dark, or as your system is now.", this.appearancePicker(t)))
