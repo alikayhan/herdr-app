@@ -23,6 +23,7 @@ use metal::{
 use parking_lot::Mutex;
 
 use std::{cell::Cell, ffi::c_void, mem, mem::MaybeUninit, ops::Range, ptr, slice, sync::Arc};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // Exported to metal
 pub(crate) type PointF = gpui::Point<f32>;
@@ -37,6 +38,15 @@ const PATH_SAMPLE_COUNT: u32 = 4;
 /// Metal requires the offset a buffer is bound at to be 256-byte aligned.
 const INSTANCE_BUFFER_ALIGNMENT: usize = 256;
 const MAX_INSTANCE_BUFFER_SIZE: usize = 256 * 1024 * 1024;
+
+static DISPLAY_P3: AtomicBool = AtomicBool::new(false);
+
+/// Tag window layers as Display P3 instead of sRGB, so color values show as
+/// P3 (as in iTerm2) and look more saturated on wide-gamut displays. Layers
+/// pick it up on their next draw; callers must refresh their windows.
+pub fn set_display_p3(enabled: bool) {
+    DISPLAY_P3.store(enabled, Ordering::Relaxed);
+}
 
 pub type Context = Arc<Mutex<InstanceBufferPool>>;
 pub type Renderer = MetalRenderer;
@@ -112,6 +122,8 @@ pub struct MetalRenderer {
     is_apple_gpu: bool,
     is_unified_memory: bool,
     presents_with_transaction: bool,
+    /// The color space last applied to `layer`: true for Display P3.
+    layer_display_p3: Option<bool>,
     /// For headless rendering, tracks whether output should be opaque
     opaque: bool,
     command_queue: CommandQueue,
@@ -198,6 +210,16 @@ impl MetalRenderer {
             objc2_quartz_core::CAAutoresizingMask::LayerWidthSizable
                 | objc2_quartz_core::CAAutoresizingMask::LayerHeightSizable,
         );
+    }
+
+    /// Setting the pixel format resets the layer to sRGB, so this runs after
+    /// `configure_layer`.
+    fn set_layer_colorspace(layer: &metal::MetalLayerRef, display_p3: bool) {
+        use objc2_core_graphics::{CGColorSpace, kCGColorSpaceDisplayP3, kCGColorSpaceSRGB};
+        let name = unsafe { if display_p3 { kCGColorSpaceDisplayP3 } else { kCGColorSpaceSRGB } };
+        let colorspace = CGColorSpace::with_name(Some(name));
+        let objc2_layer: &objc2_quartz_core::CAMetalLayer = unsafe { &*layer.as_ptr().cast() };
+        objc2_layer.setColorspace(colorspace.as_deref());
     }
 
     /// Creates a new headless MetalRenderer for offscreen rendering without a window.
@@ -382,6 +404,7 @@ impl MetalRenderer {
             device,
             layer,
             presents_with_transaction: false,
+            layer_display_p3: None,
             is_apple_gpu,
             is_unified_memory,
             opaque,
@@ -495,6 +518,11 @@ impl MetalRenderer {
                 return;
             }
         };
+        let display_p3 = DISPLAY_P3.load(Ordering::Relaxed);
+        if self.layer_display_p3 != Some(display_p3) {
+            Self::set_layer_colorspace(&layer, display_p3);
+            self.layer_display_p3 = Some(display_p3);
+        }
         let viewport_size = layer.drawable_size();
         let viewport_size: Size<DevicePixels> = size(
             (viewport_size.width.ceil() as i32).into(),

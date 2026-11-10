@@ -147,7 +147,9 @@ the default. Apple Silicon is the tested platform. The pinned renderer still
 compiles its custom-shader/inspector support and their dependencies; this bridge
 does not expose those features. Oniguruma is needed by terminal search.
 
-The native renderer uses sRGB, Ghostty's default alpha blending and no extra font
+The native renderer uses sRGB unless `window_colorspace` is `"display-p3"`, in
+which case Ghostty takes colors as Display P3 and GPUI's layer is tagged to
+match. It uses Ghostty's default alpha blending and no extra font
 thickening. This is upstream Ghostty rendering, not a promise of pixel-identical
 Rex output. Ghostty supplies its own glyph fallback, decorations, selection and
 contrast rendering. Herdr's search highlights and composing text remain GPUI

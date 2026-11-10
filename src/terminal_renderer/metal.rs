@@ -17,6 +17,7 @@ struct Configuration {
     ligatures: bool,
     contrast: f32,
     opacity: f32,
+    display_p3: bool,
     theme: crate::vt::Theme,
 }
 
@@ -46,6 +47,7 @@ fn configuration(window: &Window) -> Rc<Configuration> {
             ligatures: settings.font_ligatures,
             contrast: settings.minimum_contrast,
             opacity: settings.terminal_opacity,
+            display_p3: settings.window_colorspace == crate::settings::WindowColorspace::DisplayP3,
             theme: crate::vt::theme(),
         });
         *cached = Some((settings, value.clone()));
@@ -84,7 +86,12 @@ impl Native {
                 "--selection-background={}",
                 hex(configuration.theme.selection_bg)
             ),
-            "--window-colorspace=srgb".into(),
+            // Display P3 takes color values as P3 instead of converting them
+            // from sRGB, matching the P3 tag on GPUI's layer.
+            format!(
+                "--window-colorspace={}",
+                if configuration.display_p3 { "display-p3" } else { "srgb" }
+            ),
             "--scroll-to-bottom=false".into(),
             "--cursor-style-blink=false".into(),
             "--font-thicken=false".into(),
