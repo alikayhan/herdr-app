@@ -384,7 +384,7 @@ export function sendFeedback(body: import("gpui-kit").HostValue, images?: string
  *  padding and opacity, terminal_line_height, terminal_cell_width and terminal_scroll_speed) with the
  *  person's zoom and sounds. terminal_line_height and terminal_cell_width: number, default 1, clamped
  *  to 0.8..2; terminal_scroll_speed: number, default 1, clamped to 0.1..5. Layout values override
- *  settings.json. */
+ *  settings.json. Includes the read-only ghostty_renderer_available build capability. */
 export function settings(): Record<string, unknown>;
 
 /** Every key binding: { section, keys, action }. */
