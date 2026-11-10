@@ -384,9 +384,13 @@ pub struct Person {
     pub terminal_line_height: f32,
     /// Wheel and trackpad scroll multiplier, 0.1..5.
     pub terminal_scroll_speed: f32,
+    /// Terminal drawing backend; Ghostty requires the optional macOS build.
+    pub terminal_renderer: TerminalRenderer,
     /// The panels' font (their sizes follow zoom).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui_font: Option<String>,
+    /// macOS GPUI stroke thickening; false brings UI text closer to Ghostty.
+    pub ui_font_thicken: bool,
     /// Anonymous usage data (telemetry.rs). On unless set to false.
     #[serde(skip_serializing_if = "is_true")]
     pub telemetry: bool,
@@ -411,6 +415,14 @@ pub struct Person {
     pub theme: Option<crate::layout::ThemeChoice>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub colors: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TerminalRenderer {
+    #[default]
+    Gpui,
+    Ghostty,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -460,7 +472,9 @@ impl Default for Person {
             font_ligatures: false,
             terminal_line_height: 1.0,
             terminal_scroll_speed: 1.0,
+            terminal_renderer: TerminalRenderer::Gpui,
             ui_font: None,
+            ui_font_thicken: true,
             telemetry: true,
             clipboard_write: true,
             copy_on_select: true,
@@ -486,8 +500,14 @@ pub struct Settings {
     pub terminal_line_height: f32,
     /// Wheel and trackpad scroll multiplier, 0.1..5.
     pub terminal_scroll_speed: f32,
+    /// Terminal drawing backend; Ghostty requires the optional macOS build.
+    pub terminal_renderer: TerminalRenderer,
+    /// Read-only build capability exposed to settings UI and mods.
+    #[serde(skip_deserializing)]
+    pub ghostty_renderer_available: bool,
     pub ui_font_family: String,
     pub ui_font_size: f32,
+    pub ui_font_thicken: bool,
     /// How big the whole app is drawn (1 = as designed). The zoom keys change it.
     pub zoom: f32,
     /// The theme showing: a preset or a file in themes/.
@@ -539,8 +559,11 @@ impl Default for Settings {
             font_ligatures: false,
             terminal_line_height: 1.0,
             terminal_scroll_speed: 1.0,
+            terminal_renderer: TerminalRenderer::Gpui,
+            ghostty_renderer_available: cfg!(all(target_os = "macos", feature = "ghostty-renderer")),
             ui_font_family: "Geist".into(),
             ui_font_size: 13.0,
+            ui_font_thicken: true,
             zoom: 1.0,
             theme: DEFAULT_DARK.into(),
             theme_light: DEFAULT_LIGHT.into(),
@@ -580,8 +603,11 @@ impl Settings {
             font_ligatures: person.font_ligatures,
             terminal_line_height: look.terminal_line_height.unwrap_or(person.terminal_line_height).clamp(0.8, 2.0),
             terminal_scroll_speed: look.terminal_scroll_speed.unwrap_or(person.terminal_scroll_speed).clamp(0.1, 5.0),
+            terminal_renderer: person.terminal_renderer,
+            ghostty_renderer_available: d.ghostty_renderer_available,
             ui_font_family: look.ui_font.clone().or(person.ui_font.clone()).unwrap_or(d.ui_font_family),
             ui_font_size: d.ui_font_size,
+            ui_font_thicken: person.ui_font_thicken,
             zoom: person.zoom,
             theme: if dark { theme_dark.clone() } else { theme_light.clone() },
             theme_light,
@@ -714,6 +740,8 @@ pub fn write_person(person: &Person) -> std::io::Result<()> {
 /// Installs new settings; returns whether anything changed.
 pub fn set(s: Settings) -> bool {
     #[cfg(target_os = "macos")]
+    gpui_macos::set_font_thickening(s.ui_font_thicken);
+    #[cfg(target_os = "macos")]
     gpui_macos::set_option_as_alt(match s.option_as_alt {
         OptionAsAlt::Auto => None,
         OptionAsAlt::Off => Some(gpui_macos::OptionAsAlt::None),
@@ -816,6 +844,7 @@ pub fn load_home_fonts(cx: &mut gpui::App) -> bool {
     if new.is_empty() {
         return false;
     }
+    crate::terminal_renderer::register_fonts(&new);
     if let Err(e) = cx.text_system().add_fonts(new) {
         tracing::warn!("fonts in {} not loaded: {e:#}", home.display());
     }
@@ -984,6 +1013,18 @@ mod tests {
         let clicks = crate::layout_sync::State { theme: Some(ThemeChoice::One("ink".into())), ..Default::default() };
         clicks.apply(&mut win98);
         assert_eq!(Settings::compose(&person, &win98.look, true).theme, "ink");
+    }
+
+    #[test]
+    fn interface_text_preserves_existing_defaults_and_round_trips() {
+        let existing: Person = serde_json::from_str(r#"{"ui_font":"Monaco"}"#).unwrap();
+        assert!(existing.ui_font_thicken);
+        let lighter: Person = serde_json::from_str(r#"{"ui_font":"Monaco","ui_font_thicken":false}"#).unwrap();
+        let composed = Settings::compose(&lighter, &crate::layout::Look::default(), true);
+        assert!(!composed.ui_font_thicken);
+        assert_eq!(composed.ui_font_family, "Monaco");
+        let saved = serde_json::to_string(&lighter).unwrap();
+        assert_eq!(serde_json::from_str::<Person>(&saved).unwrap(), lighter);
     }
 
     /// The guide agents read (written to the home folder) explains every
